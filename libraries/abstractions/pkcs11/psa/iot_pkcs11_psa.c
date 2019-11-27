@@ -3040,3 +3040,437 @@ CK_DEFINE_FUNCTION( CK_RV, C_Verify )( CK_SESSION_HANDLE xSession,
 	/* Return the signature verification result. */
 	return xResult;
 }
+
+/* Checks that the private key template provided for C_GenerateKeyPair
+ * contains all necessary attributes, and does not contain any invalid
+ * attributes. */
+CK_RV prvCheckGenerateKeyPairPrivateTemplate( CK_ATTRIBUTE_PTR * ppxLabel,
+											  CK_ATTRIBUTE_PTR pxTemplate,
+											  CK_ULONG ulTemplateLength )
+{
+	CK_ATTRIBUTE xAttribute;
+	CK_RV xResult = CKR_OK;
+	CK_BBOOL xBool;
+	CK_ULONG xTemp;
+	CK_ULONG xIndex;
+	uint32_t xAttributeMap = 0;
+	uint32_t xRequiredAttributeMap = ( LABEL_IN_TEMPLATE | PRIVATE_IN_TEMPLATE | SIGN_IN_TEMPLATE );
+
+	for( xIndex = 0; xIndex < ulTemplateLength; xIndex++ )
+	{
+		xAttribute = pxTemplate[ xIndex ];
+
+		switch( xAttribute.type )
+		{
+			case ( CKA_LABEL ):
+				*ppxLabel = &pxTemplate[ xIndex ];
+				xAttributeMap |= LABEL_IN_TEMPLATE;
+				break;
+
+			case ( CKA_TOKEN ):
+				memcpy( &xBool, xAttribute.pValue, sizeof( CK_BBOOL ) );
+
+				if( xBool != CK_TRUE )
+				{
+					PKCS11_PRINT( ( "ERROR: Only token key generation is supported. \r\n" ) );
+					xResult = CKR_ATTRIBUTE_VALUE_INVALID;
+				}
+
+				break;
+
+			case ( CKA_KEY_TYPE ):
+				memcpy( &xTemp, xAttribute.pValue, sizeof( CK_ULONG ) );
+
+				if( xTemp != CKK_EC )
+				{
+					PKCS11_PRINT( ( "ERROR: Only EC key pair generation is supported. \r\n" ) );
+					xResult = CKR_TEMPLATE_INCONSISTENT;
+				}
+
+				break;
+
+			case ( CKA_PRIVATE ):
+				memcpy( &xBool, xAttribute.pValue, sizeof( CK_BBOOL ) );
+
+				if( xBool != CK_TRUE )
+				{
+					PKCS11_PRINT( ( "ERROR: Generating private keys that are not marked private is not supported. \r\n" ) );
+					xResult = CKR_TEMPLATE_INCONSISTENT;
+				}
+
+				xAttributeMap |= PRIVATE_IN_TEMPLATE;
+				break;
+
+			case ( CKA_SIGN ):
+				memcpy( &xBool, xAttribute.pValue, sizeof( CK_BBOOL ) );
+
+				if( xBool != CK_TRUE )
+				{
+					PKCS11_PRINT( ( "ERROR: Generating private keys that cannot sign is not supported. \r\n" ) );
+					xResult = CKR_TEMPLATE_INCONSISTENT;
+				}
+
+				xAttributeMap |= SIGN_IN_TEMPLATE;
+				break;
+
+			default:
+				xResult = CKR_TEMPLATE_INCONSISTENT;
+				break;
+		}
+	}
+
+	if( ( xAttributeMap & xRequiredAttributeMap ) != xRequiredAttributeMap )
+	{
+		xResult = CKR_TEMPLATE_INCOMPLETE;
+	}
+
+	return xResult;
+}
+
+/* Checks that the public key template provided for C_GenerateKeyPair
+ * contains all necessary attributes, and does not contain any invalid
+ * attributes. */
+CK_RV prvCheckGenerateKeyPairPublicTemplate( CK_ATTRIBUTE_PTR * ppxLabel,
+											 CK_ATTRIBUTE_PTR pxTemplate,
+											 CK_ULONG ulTemplateLength )
+{
+	CK_ATTRIBUTE xAttribute;
+	CK_RV xResult = CKR_OK;
+	CK_BBOOL xBool;
+	CK_KEY_TYPE xKeyType;
+	CK_BYTE xEcParams[] = pkcs11DER_ENCODED_OID_P256;
+	int lCompare;
+	CK_ULONG ulIndex;
+	uint32_t xAttributeMap = 0;
+	uint32_t xRequiredAttributeMap = ( LABEL_IN_TEMPLATE | EC_PARAMS_IN_TEMPLATE | VERIFY_IN_TEMPLATE );
+
+	for( ulIndex = 0; ulIndex < ulTemplateLength; ulIndex++ )
+	{
+		xAttribute = pxTemplate[ ulIndex ];
+
+		switch( xAttribute.type )
+		{
+			case ( CKA_LABEL ):
+
+				*ppxLabel = &pxTemplate[ ulIndex ];
+				xAttributeMap |= LABEL_IN_TEMPLATE;
+				break;
+
+			case ( CKA_KEY_TYPE ):
+				memcpy( &xKeyType, xAttribute.pValue, sizeof( CK_KEY_TYPE ) );
+
+				if( xKeyType != CKK_EC )
+				{
+					PKCS11_PRINT( ( "ERROR: Only EC key pair generation is supported. \r\n" ) );
+					xResult = CKR_TEMPLATE_INCONSISTENT;
+				}
+
+				break;
+
+			case ( CKA_EC_PARAMS ):
+				lCompare = memcmp( xEcParams, xAttribute.pValue, sizeof( xEcParams ) );
+
+				if( lCompare != 0 )
+				{
+					PKCS11_PRINT( ( "ERROR: Only P-256 key generation is supported. \r\n" ) );
+					xResult = CKR_TEMPLATE_INCONSISTENT;
+				}
+
+				xAttributeMap |= EC_PARAMS_IN_TEMPLATE;
+				break;
+
+			case ( CKA_VERIFY ):
+				memcpy( &xBool, xAttribute.pValue, sizeof( CK_BBOOL ) );
+
+				if( xBool != CK_TRUE )
+				{
+					PKCS11_PRINT( ( "ERROR: Generating public keys that cannot verify is not supported. \r\n" ) );
+					xResult = CKR_TEMPLATE_INCONSISTENT;
+				}
+
+				xAttributeMap |= VERIFY_IN_TEMPLATE;
+				break;
+
+			case ( CKA_TOKEN ):
+				memcpy( &xBool, xAttribute.pValue, sizeof( CK_BBOOL ) );
+
+				if( xBool != CK_TRUE )
+				{
+					PKCS11_PRINT( ( "ERROR: Only token key generation is supported. \r\n" ) );
+					xResult = CKR_ATTRIBUTE_VALUE_INVALID;
+				}
+
+				break;
+
+			default:
+				xResult = CKR_TEMPLATE_INCONSISTENT;
+				break;
+		}
+	}
+
+	if( ( xAttributeMap & xRequiredAttributeMap ) != xRequiredAttributeMap )
+	{
+		xResult = CKR_TEMPLATE_INCOMPLETE;
+	}
+
+	return xResult;
+}
+
+/**
+ * @brief Generate a new public-private key pair.
+ *
+ * This port only supports generating elliptic curve P-256
+ * key pairs.
+ *
+ * @param[in] xSession                      Handle of a valid PKCS #11 session.
+ * @param[in] pxMechanism                   Pointer to a mechanism. At this time,
+ *                                          CKM_EC_KEY_PAIR_GEN is the only supported mechanism.
+ * @param[in] pxPublicKeyTemplate           Pointer to a list of attributes that the generated
+ *                                          public key should possess.
+ *                                          Public key template must have the following attributes:
+ *                                          - CKA_LABEL
+ *                                              - Label should be no longer than #pkcs11configMAX_LABEL_LENGTH
+ *                                              and must be supported by port's PKCS #11 PAL.
+ *                                          - CKA_EC_PARAMS
+ *                                              - Must equal pkcs11DER_ENCODED_OID_P256.
+ *                                              Only P-256 keys are supported.
+ *                                          - CKA_VERIFY
+ *                                              - Must be set to true.  Only public keys used
+ *                                              for verification are supported.
+ *                                          Public key templates may have the following attributes:
+ *                                          - CKA_KEY_TYPE
+ *                                              - Must be set to CKK_EC. Only elliptic curve key
+ *                                              generation is supported.
+ *                                          - CKA_TOKEN
+ *                                              - Must be set to CK_TRUE.
+ * @param[in] ulPublicKeyAttributeCount     Number of attributes in pxPublicKeyTemplate.
+ * @param[in] pxPrivateKeyTemplate          Pointer to a list of attributes that the generated
+ *                                          private key should possess.
+ *                                          Private key template must have the following attributes:
+ *                                          - CKA_LABEL
+ *                                              - Label should be no longer than #pkcs11configMAX_LABEL_LENGTH
+ *                                              and must be supported by port's PKCS #11 PAL.
+ *                                          - CKA_PRIVATE
+ *                                              - Must be set to true.
+ *                                          - CKA_SIGN
+ *                                              - Must be set to true.  Only private keys used
+ *                                              for signing are supported.
+ *                                          Private key template may have the following attributes:
+ *                                          - CKA_KEY_TYPE
+ *                                              - Must be set to CKK_EC. Only elliptic curve key
+ *                                              generation is supported.
+ *                                          - CKA_TOKEN
+ *                                              - Must be set to CK_TRUE.
+ *
+ * @param[in] ulPrivateKeyAttributeCount    Number of attributes in pxPrivateKeyTemplate.
+ * @param[out] pxPublicKey                  Pointer to the handle of the public key to be created.
+ * @param[out] pxPrivateKey                 Pointer to the handle of the private key to be created.
+ *
+ * \note Not all attributes specified by the PKCS #11 standard are supported.
+ * \note CKA_LOCAL attribute is not supported.
+ *
+ * @return CKR_OK if successful.
+ * Else, see <a href="https://tiny.amazon.com/wtscrttv">PKCS #11 specification</a>
+ * for more information.
+ */
+CK_DEFINE_FUNCTION( CK_RV, C_GenerateKeyPair )( CK_SESSION_HANDLE xSession,
+												CK_MECHANISM_PTR pxMechanism,
+												CK_ATTRIBUTE_PTR pxPublicKeyTemplate,
+												CK_ULONG ulPublicKeyAttributeCount,
+												CK_ATTRIBUTE_PTR pxPrivateKeyTemplate,
+												CK_ULONG ulPrivateKeyAttributeCount,
+												CK_OBJECT_HANDLE_PTR pxPublicKey,
+												CK_OBJECT_HANDLE_PTR pxPrivateKey )
+{
+	CK_RV xResult = PKCS11_SESSION_VALID_AND_MODULE_INITIALIZED( xSession );
+	psa_status_t uxStatus;
+	psa_key_handle_t key_handle_private;
+	psa_key_handle_t key_handle_public;
+	psa_key_type_t uxKeyType;
+	psa_algorithm_t uxAlgorithm;
+	psa_key_policy_t policy = psa_key_policy_init();
+	CK_ATTRIBUTE_PTR pxPrivateLabel = NULL;
+	CK_ATTRIBUTE_PTR pxPublicLabel = NULL;
+	uint8_t * pUncompressedECPoint = pvPortMalloc( pkcs11KEY_ECPOINT_LENGTH );
+	size_t uxPublicKeyLength;
+
+	if( pUncompressedECPoint == NULL )
+	{
+		xResult = CKR_HOST_MEMORY;
+	}
+
+	#if ( pkcs11configSUPPRESS_ECDSA_MECHANISM == 1 )
+		if( xResult == CKR_OK )
+		{
+			xResult = CKR_MECHANISM_INVALID;
+		}
+	#endif
+
+	if( xResult == CKR_OK )
+	{
+		if( ( pxPublicKeyTemplate == NULL ) ||
+			( pxPrivateKeyTemplate == NULL ) ||
+			( pxPublicKey == NULL ) ||
+			( pxPrivateKey == NULL ) ||
+			( pxMechanism == NULL ) )
+		{
+			xResult = CKR_ARGUMENTS_BAD;
+		}
+	}
+
+	if( xResult == CKR_OK )
+	{
+		if( CKM_EC_KEY_PAIR_GEN != pxMechanism->mechanism )
+		{
+			xResult = CKR_MECHANISM_PARAM_INVALID;
+		}
+	}
+
+	if( xResult == CKR_OK )
+	{
+		xResult = prvCheckGenerateKeyPairPrivateTemplate( &pxPrivateLabel,
+														  pxPrivateKeyTemplate,
+														  ulPrivateKeyAttributeCount );
+	}
+
+	if( xResult == CKR_OK )
+	{
+		xResult = prvCheckGenerateKeyPairPublicTemplate( &pxPublicLabel,
+														 pxPublicKeyTemplate,
+														 ulPublicKeyAttributeCount );
+	}
+
+	if( xResult == CKR_OK )
+	{
+		uxStatus = psa_allocate_key( &key_handle_private );
+		if ( uxStatus == PSA_SUCCESS )
+		{
+			uxAlgorithm = PSA_ALG_ECDSA( PSA_ALG_SHA_256 );
+			psa_key_policy_set_usage( &policy, PSA_KEY_USAGE_SIGN, uxAlgorithm );
+			uxStatus = psa_set_key_policy( key_handle_private, &policy );
+		}
+		if ( uxStatus == PSA_SUCCESS )
+		{
+			/*
+			* Please refer https://tools.ietf.org/html/rfc8422
+			* NISTP256 is equivalent to SECP256r1.
+			* To keep consistent with mbedtls based implementation, set the key
+			* type as ECC_KEYPAIR(SECP256R1).
+			*/
+			uxStatus = psa_generate_key( key_handle_private,
+										 PSA_KEY_TYPE_ECC_KEYPAIR( PSA_ECC_CURVE_SECP256R1 ),
+										 ( size_t )256,
+										 NULL,
+										 0 );
+		}
+		if ( uxStatus == PSA_SUCCESS )
+		{
+			/*
+			 * Export the public key from the generated key pair.
+			 * Policy is not checked when exporting a public key.
+			 */
+			uxStatus = psa_export_public_key( key_handle_private,
+											  pUncompressedECPoint,
+											  pkcs11KEY_ECPOINT_LENGTH,
+											  &uxPublicKeyLength );
+
+		}
+		if ( uxStatus == PSA_SUCCESS )
+		{
+			uxStatus = psa_allocate_key( &key_handle_public );
+		}
+		if ( uxStatus == PSA_SUCCESS )
+		{
+			uxKeyType = PSA_KEY_TYPE_ECC_PUBLIC_KEY(PSA_ECC_CURVE_SECP256R1);
+			uxAlgorithm = PSA_ALG_ECDSA( PSA_ALG_SHA_256 );
+			psa_key_policy_set_usage( &policy,
+									  PSA_KEY_USAGE_VERIFY,
+									  uxAlgorithm );
+			uxStatus = psa_set_key_policy( key_handle_public, &policy );
+		}
+		if ( uxStatus == PSA_SUCCESS )
+		{
+			uxStatus = psa_import_key( key_handle_public,
+									   uxKeyType,
+									   pUncompressedECPoint,
+									   uxPublicKeyLength );
+		}
+		if ( uxStatus == PSA_SUCCESS )
+		{
+			if( strcmp( pxPrivateLabel->pValue,
+					pkcs11configLABEL_DEVICE_PRIVATE_KEY_FOR_TLS ) == 0 )
+			{
+				P11KeyConfig.uxDevicePrivateKey = key_handle_private;
+
+				/*
+				* The length of a PSA_ECC_CURVE_SECP256R1 private key is 32 bytes.
+				*/
+				P11KeyConfig.ulDevicePrivateKeyMark = ( pkcs11OBJECT_PRESENT_MAGIC | ( size_t )32 );
+				xResult = prvAddObjectToList( eAwsDevicePrivateKey, pxPrivateKey, pxPrivateLabel->pValue, pxPrivateLabel->ulValueLen );
+			}
+			else
+			{
+				xResult = CKR_ATTRIBUTE_VALUE_INVALID;
+			}
+			if( strcmp( pxPublicLabel->pValue,
+					pkcs11configLABEL_DEVICE_PUBLIC_KEY_FOR_TLS ) == 0 )
+			{
+				P11KeyConfig.uxDevicePublicKey = key_handle_public;
+				P11KeyConfig.ulDevicePublicKeyMark = ( pkcs11OBJECT_PRESENT_MAGIC | uxPublicKeyLength );
+				if( xResult == CKR_OK )
+				{
+					xResult = prvAddObjectToList( eAwsDevicePublicKey, pxPublicKey, pxPublicLabel->pValue, pxPublicLabel->ulValueLen );
+				}
+			}
+			else
+			{
+				xResult = CKR_ATTRIBUTE_VALUE_INVALID;
+			}
+		}
+		else
+		{
+			xResult = CKR_FUNCTION_FAILED;
+		}
+	}
+	return xResult;
+}
+
+/**
+ * @brief Generate cryptographically random bytes.
+ *
+ * @param xSession[in]          Handle of a valid PKCS #11 session.
+ * @param pucRandomData[out]    Pointer to location that random data will be placed.
+ *                              It is the responsiblity of the application to allocate
+ *                              this memory.
+ * @param ulRandomLength[in]    Length of data (in bytes) to be generated.
+ *
+ * @return CKR_OK if successful.
+ * Else, see <a href="https://tiny.amazon.com/wtscrttv">PKCS #11 specification</a>
+ * for more information.
+ */
+CK_DEFINE_FUNCTION( CK_RV, C_GenerateRandom )( CK_SESSION_HANDLE xSession,
+											   CK_BYTE_PTR pucRandomData,
+											   CK_ULONG ulRandomLen )
+{
+	CK_RV xResult = CKR_OK;
+	psa_status_t uxStatus;
+
+	/* Avoid warnings about unused parameters. */
+	( void ) xSession;
+
+	if( ( NULL == pucRandomData ) ||
+		( ulRandomLen == 0 ) )
+	{
+		xResult = CKR_ARGUMENTS_BAD;
+	}
+	else
+	{
+		uxStatus = psa_generate_random( pucRandomData, ( size_t )ulRandomLen );
+		if ( uxStatus != PSA_SUCCESS )
+		{
+			xResult = CKR_FUNCTION_FAILED;
+		}
+	}
+
+	return xResult;
+}
