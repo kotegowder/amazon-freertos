@@ -62,10 +62,7 @@
 #include "mbedtls/oid.h"
 
 /* Default Amazon FreeRTOS API for console logging. */
-#define DEV_MODE_KEY_PROVISIONING_PRINT( X )    vLoggingPrintf X
-
-/* For writing log lines without a prefix. */
-extern void vLoggingPrint( const char * pcFormat );
+#define DEV_MODE_KEY_PROVISIONING_PRINT( X )    INFO_LOG X
 
 /* Developer convenience override, for lab testing purposes, for generating
  * a new default key pair, regardless of whether an existing key pair is present. */
@@ -921,8 +918,8 @@ static void prvWriteHexBytesToConsole( CK_SESSION_HANDLE xSession,
         if( 0 == ( ( ulIndex + 1 ) % BYTES_TO_DISPLAY_PER_ROW ) )
         {
             *pcNextChar = '\0';
-            vLoggingPrint( pcByteRow );
-            vLoggingPrint( "\r\n" );
+            print_log( pcByteRow );
+            print_log( "\r\n" );
             pcNextChar = pcByteRow;
         }
     }
@@ -931,8 +928,8 @@ static void prvWriteHexBytesToConsole( CK_SESSION_HANDLE xSession,
     if( pcNextChar > pcByteRow )
     {
         *pcNextChar = '\0';
-        vLoggingPrint( pcByteRow );
-        vLoggingPrint( "\r\n" );
+        print_log( pcByteRow );
+        print_log( "\r\n" );
     }
 }
 

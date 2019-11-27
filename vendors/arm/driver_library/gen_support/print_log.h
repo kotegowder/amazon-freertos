@@ -27,6 +27,7 @@
 extern "C" {
 #endif
 
+#include "FreeRTOS.h"
 #include "semphr.h"
 
 #define ERR_LEVEL		3
