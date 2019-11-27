@@ -2492,3 +2492,551 @@ CK_DEFINE_FUNCTION( CK_RV, C_DigestFinal )( CK_SESSION_HANDLE xSession,
 
 	return xResult;
 }
+
+/**
+ * @brief Begin creating a digital signature.
+ *
+ * \sa C_Sign() completes signatures initiated by C_SignInit().
+ *
+ * \note C_Sign() parameters are shared by a session.  Calling
+ * C_SignInit() & C_Sign() with the same session across different
+ * tasks may lead to unexpected results.
+ *
+ *
+ * @param[in] xSession                      Handle of a valid PKCS #11 session.
+ * @param[in] pxMechanism                   Mechanism used to sign.
+ *                                          This port supports the following mechanisms:
+ *                                          - CKM_RSA_PKCS for RSA signatures
+ *                                          - CKM_ECDSA for elliptic curve signatures
+ *                                          Note that neither of these mechanisms perform
+ *                                          hash operations.
+ * @param[in] xKey                          The handle of the private key to be used for
+ *                                          signature. Key must be compatible with the
+ *                                          mechanism chosen by pxMechanism.
+ *
+ * @return CKR_OK if successful.
+ * Else, see <a href="https://tiny.amazon.com/wtscrttv">PKCS #11 specification</a>
+ * for more information.
+ */
+CK_DEFINE_FUNCTION( CK_RV, C_SignInit )( CK_SESSION_HANDLE xSession,
+										 CK_MECHANISM_PTR pxMechanism,
+										 CK_OBJECT_HANDLE xKey )
+{
+	CK_RV xResult = PKCS11_SESSION_VALID_AND_MODULE_INITIALIZED( xSession );
+	CK_OBJECT_HANDLE xPalHandle;
+	uint8_t * pxLabel = NULL;
+	size_t xLabelLength = 0;
+	psa_key_policy_t policy;
+	psa_status_t uxStatus;
+
+	/*lint !e9072 It's OK to have different parameter name. */
+	P11SessionPtr_t pxSession = prvSessionPointerFromHandle( xSession );
+
+	if( xResult == CKR_OK )
+	{
+		if( NULL == pxMechanism )
+		{
+			xResult = CKR_ARGUMENTS_BAD;
+		}
+	}
+
+	/* Retrieve key value from storage. */
+	if( xResult == CKR_OK )
+	{
+		prvFindObjectInListByHandle( xKey,
+									 &xPalHandle,
+									 &pxLabel,
+									 &xLabelLength );
+	}
+
+	if( xResult == CKR_OK )
+	{
+		if( xPalHandle == CK_INVALID_HANDLE )
+		{
+			xResult = CKR_KEY_HANDLE_INVALID;
+		}
+	}
+
+	if( xResult == CKR_OK )
+	{
+		if( pdTRUE == xSemaphoreTake( pxSession->xSignMutex, portMAX_DELAY ) )
+		{
+
+			/*
+			 * Only the device private key and code sign key can be used
+			 * to make a signature.
+			 */
+			if ( xPalHandle == eAwsDevicePrivateKey )
+			{
+				pxSession->uxSignKey = P11KeyConfig.uxDevicePrivateKey;
+
+				/* Get the key's algorithm by getting the key policy. */
+				uxStatus = psa_get_key_policy( P11KeyConfig.uxDevicePrivateKey, &policy );
+				if ( uxStatus != PSA_SUCCESS )
+				{
+					xResult = CKR_FUNCTION_FAILED;
+				}
+				else
+				{
+					pxSession->xSignAlgorithm = policy.alg;
+				}
+			}
+			else
+			{
+				pxSession->uxSignKey = NULL;
+				xResult = CKR_KEY_HANDLE_INVALID;
+			}
+			xSemaphoreGive( pxSession->xSignMutex );
+		}
+		else
+		{
+			xResult = CKR_CANT_LOCK;
+		}
+	}
+
+	/* Check that the mechanism and key type are compatible, supported. */
+	if( xResult == CKR_OK )
+	{
+		if( pxMechanism->mechanism == CKM_RSA_PKCS )
+		{
+			if( ( !( PSA_ALG_IS_RSA_PKCS1V15_SIGN( pxSession->xSignAlgorithm ) ) ) &&
+				( !( PSA_ALG_IS_RSA_PSS( pxSession->xSignAlgorithm ) ) ) )
+			{
+				PKCS11_PRINT( ( "ERROR: Signing key type (%d) does not match RSA mechanism \r\n", pxSession->xSignAlgorithm ) );
+				xResult = CKR_KEY_TYPE_INCONSISTENT;
+			}
+		}
+		else if( pxMechanism->mechanism == CKM_ECDSA )
+		{
+			if( !PSA_ALG_IS_ECDSA( pxSession->xSignAlgorithm ) )
+			{
+				PKCS11_PRINT( ( "ERROR: Signing key type (%d) does not match ECDSA mechanism \r\n", pxSession->xSignAlgorithm ) );
+				xResult = CKR_KEY_TYPE_INCONSISTENT;
+			}
+		}
+		else
+		{
+			PKCS11_PRINT( ( "ERROR: Unsupported mechanism type %d \r\n", pxMechanism->mechanism ) );
+			xResult = CKR_MECHANISM_INVALID;
+		}
+	}
+
+	if( xResult == CKR_OK )
+	{
+		pxSession->xSignMechanism = pxMechanism->mechanism;
+	}
+
+	return xResult;
+}
+
+/**
+ * @brief Performs a digital signature operation.
+ *
+ * \sa C_SignInit() initiates signatures signature creation.
+ *
+ * \note C_Sign() parameters are shared by a session.  Calling
+ * C_SignInit() & C_Sign() with the same session across different
+ * tasks may lead to unexpected results.
+ *
+ *
+ * @param[in] xSession                      Handle of a valid PKCS #11 session.
+ * @param[in] pucData                       Data to be signed.
+ *                                          Note: Some applications may require this data to
+ *                                          be hashed before passing to C_Sign().
+ * @param[in] ulDataLen                     Length of pucData, in bytes.
+ * @param[out] pucSignature                 Buffer where signature will be placed.
+ *                                          Caller is responsible for allocating memory.
+ *                                          Providing NULL for this input will cause
+ *                                          pulSignatureLen to be updated for length of
+ *                                          buffer required.
+ * @param[in,out] pulSignatureLen           Length of pucSignature buffer.
+ *                                          If pucSignature is non-NULL, pulSignatureLen is
+ *                                          updated to contain the actual signature length.
+ *                                          If pucSignature is NULL, pulSignatureLen is
+ *                                          updated to the buffer length required for signature
+ *                                          data.
+ *
+ * @return CKR_OK if successful.
+ * Else, see <a href="https://tiny.amazon.com/wtscrttv">PKCS #11 specification</a>
+ * for more information.
+ */
+CK_DEFINE_FUNCTION( CK_RV, C_Sign )( CK_SESSION_HANDLE xSession,
+									 CK_BYTE_PTR pucData,
+									 CK_ULONG ulDataLen,
+									 CK_BYTE_PTR pucSignature,
+									 CK_ULONG_PTR pulSignatureLen )
+{   /*lint !e9072 It's OK to have different parameter name. */
+	CK_RV xResult = PKCS11_SESSION_VALID_AND_MODULE_INITIALIZED( xSession );
+	P11SessionPtr_t pxSessionObj = prvSessionPointerFromHandle( xSession );
+	CK_ULONG xSignatureLength = 0;
+	CK_ULONG xExpectedInputLength = 0;
+	int lMbedTLSResult;
+	psa_status_t uxStatus;
+	CK_BYTE_PTR pucDataToBeSigned = pucData;
+	CK_LONG ulDataLengthToBeSigned = ulDataLen;
+
+	if( CKR_OK == xResult )
+	{
+		if( ( NULL == pulSignatureLen ) || ( NULL == pucData ) )
+		{
+			xResult = CKR_ARGUMENTS_BAD;
+		}
+	}
+
+	if( CKR_OK == xResult )
+	{
+		/* Update the signature length. */
+
+		if( pxSessionObj->xSignMechanism == CKM_RSA_PKCS )
+		{
+			xSignatureLength = pkcs11RSA_2048_SIGNATURE_LENGTH;
+			xExpectedInputLength = pkcs11RSA_SIGNATURE_INPUT_LENGTH;
+
+			/* Remove the padding of SHA256 Algorithm Identifier Sequence. */
+			pucDataToBeSigned = pucData + pkcs11DER_ENCODED_OID_P256_LEGNTH;
+			ulDataLengthToBeSigned = ulDataLengthToBeSigned - pkcs11DER_ENCODED_OID_P256_LEGNTH;
+
+		}
+		else if( pxSessionObj->xSignMechanism == CKM_ECDSA )
+		{
+			xSignatureLength = pkcs11ECDSA_P256_SIGNATURE_LENGTH;
+			xExpectedInputLength = pkcs11SHA256_DIGEST_LENGTH;
+		}
+		else
+		{
+			xResult = CKR_OPERATION_NOT_INITIALIZED;
+		}
+	}
+
+	if( xResult == CKR_OK )
+	{
+		/* Calling application is trying to determine length needed for signature buffer. */
+		if( NULL != pucSignature )
+		{
+			/* Check that the signature buffer is long enough. */
+			if( *pulSignatureLen < xSignatureLength )
+			{
+				xResult = CKR_BUFFER_TOO_SMALL;
+			}
+
+			/* Check that input data to be signed is the expected length. */
+			if( CKR_OK == xResult )
+			{
+				if( xExpectedInputLength != ulDataLen )
+				{
+					xResult = CKR_DATA_LEN_RANGE;
+				}
+			}
+
+			/* Sign the data.*/
+			if( CKR_OK == xResult )
+			{
+				if( pdTRUE == xSemaphoreTake( pxSessionObj->xSignMutex, portMAX_DELAY ) )
+				{
+					if ( pxSessionObj->uxSignKey == NULL )
+					{
+						xResult = CKR_KEY_HANDLE_INVALID;
+					}
+					else
+					{
+						uxStatus = psa_asymmetric_sign( pxSessionObj->uxSignKey,
+														pxSessionObj->xSignAlgorithm,
+														( const uint8_t * )pucDataToBeSigned,
+														( size_t )ulDataLengthToBeSigned,
+														( uint8_t * )pucSignature,
+														( size_t )*pulSignatureLen,
+														( size_t * )pulSignatureLen );
+
+						if( uxStatus != PSA_SUCCESS )
+						{
+							PKCS11_PRINT( ( "mbedTLS sign failed with error %d \r\n", lMbedTLSResult ) );
+							xResult = CKR_FUNCTION_FAILED;
+						}
+					}
+
+					xSemaphoreGive( pxSessionObj->xSignMutex );
+				}
+				else
+				{
+					xResult = CKR_CANT_LOCK;
+				}
+			}
+		}
+	}
+
+	/* Complete the operation in the context. */
+	if( xResult != CKR_BUFFER_TOO_SMALL )
+	{
+		pxSessionObj->xSignMechanism = pkcs11NO_OPERATION;
+	}
+
+	return xResult;
+}
+
+/**
+ * @brief Begin a digital signature verification.
+ *
+ * \sa C_Verify() completes verifications initiated by C_VerifyInit().
+ *
+ * \note C_Verify() parameters are shared by a session.  Calling
+ * C_VerifyInit() & C_Verify() with the same session across different
+ * tasks may lead to unexpected results.
+ *
+ *
+ * @param[in] xSession                      Handle of a valid PKCS #11 session.
+ * @param[in] pxMechanism                   Mechanism used to verify signature.
+ *                                          This port supports the following mechanisms:
+ *                                          - CKM_RSA_X_509 for RSA verifications
+ *                                          - CKM_ECDSA for elliptic curve verifications
+ * @param[in] xKey                          The handle of the public key to be used for
+ *                                          verification. Key must be compatible with the
+ *                                          mechanism chosen by pxMechanism.
+ *
+ * @return CKR_OK if successful.
+ * Else, see <a href="https://tiny.amazon.com/wtscrttv">PKCS #11 specification</a>
+ * for more information.
+ */
+CK_DEFINE_FUNCTION( CK_RV, C_VerifyInit )( CK_SESSION_HANDLE xSession,
+										   CK_MECHANISM_PTR pxMechanism,
+										   CK_OBJECT_HANDLE xKey )
+{
+	CK_RV xResult = PKCS11_SESSION_VALID_AND_MODULE_INITIALIZED( xSession );
+	P11SessionPtr_t pxSession;
+	CK_OBJECT_HANDLE xPalHandle = CK_INVALID_HANDLE;
+	uint8_t * pxLabel = NULL;
+	size_t xLabelLength = 0;
+	psa_key_policy_t policy;
+	psa_status_t uxStatus;
+
+	pxSession = prvSessionPointerFromHandle( xSession );
+
+	if( xResult == CKR_OK )
+	{
+		if( NULL == pxMechanism )
+		{
+			PKCS11_PRINT( ( "ERROR: Null verification mechanism provided. \r\n" ) );
+			xResult = CKR_ARGUMENTS_BAD;
+		}
+	}
+
+	/* Retrieve key value from storage. */
+	if( xResult == CKR_OK )
+	{
+		prvFindObjectInListByHandle( xKey,
+									 &xPalHandle,
+									 &pxLabel,
+									 &xLabelLength );
+
+		if( xPalHandle == CK_INVALID_HANDLE )
+		{
+			pxSession->uxSignKey = NULL;
+			xResult = CKR_KEY_HANDLE_INVALID;
+		}
+	}
+
+	if( xResult == CKR_OK )
+	{
+		if( pdTRUE == xSemaphoreTake( pxSession->xVerifyMutex, portMAX_DELAY ) )
+		{
+			if ( xPalHandle == eAwsDevicePublicKey )
+			{
+				pxSession->uxVerifyKey = P11KeyConfig.uxDevicePublicKey;
+				uxStatus = psa_get_key_policy( P11KeyConfig.uxDevicePublicKey, &policy );
+				if ( uxStatus != PSA_SUCCESS )
+				{
+					xResult = CKR_FUNCTION_FAILED;
+				}
+				else
+				{
+					pxSession->xVerifyAlgorithm = policy.alg;
+				}
+			}
+			else if( xPalHandle == eAwsCodeSigningKey )
+			{
+				pxSession->uxVerifyKey = P11KeyConfig.uxCodeVerifyKey;
+				uxStatus = psa_get_key_policy( P11KeyConfig.uxCodeVerifyKey, &policy );
+				if ( uxStatus != PSA_SUCCESS )
+				{
+					xResult = CKR_FUNCTION_FAILED;
+				}
+				else
+				{
+					pxSession->xVerifyAlgorithm = policy.alg;
+				}
+			}
+			else
+			{
+				pxSession->uxVerifyKey = NULL;
+				xResult = CKR_KEY_HANDLE_INVALID;
+			}
+
+			xSemaphoreGive( pxSession->xVerifyMutex );
+		}
+		else
+		{
+			xResult = CKR_CANT_LOCK;
+		}
+	}
+
+	/* Check that the mechanism and key type are compatible, supported. */
+	if( xResult == CKR_OK )
+	{
+		if( pxMechanism->mechanism == CKM_RSA_X_509 )
+		{
+			if( ( !( PSA_ALG_IS_RSA_PKCS1V15_SIGN( pxSession->xSignAlgorithm ) ) ) &&
+				( !( PSA_ALG_IS_RSA_PSS( pxSession->xSignAlgorithm ) ) ) )
+			{
+				PKCS11_PRINT( ( "ERROR: Verification key type (%d) does not match RSA mechanism \r\n", pxSession->xSignAlgorithm ) );
+				xResult = CKR_KEY_TYPE_INCONSISTENT;
+			}
+		}
+		else if( pxMechanism->mechanism == CKM_ECDSA )
+		{
+			if( !PSA_ALG_IS_ECDSA( pxSession->xSignAlgorithm ) )
+			{
+				PKCS11_PRINT( ( "ERROR: Verification key type (%d) does not match ECDSA mechanism \r\n", pxSession->xSignAlgorithm ) );
+				xResult = CKR_KEY_TYPE_INCONSISTENT;
+			}
+		}
+		else
+		{
+			PKCS11_PRINT( ( "ERROR: Unsupported mechanism type %d \r\n", pxMechanism->mechanism ) );
+			xResult = CKR_MECHANISM_INVALID;
+		}
+	}
+
+	if( xResult == CKR_OK )
+	{
+		pxSession->xVerifyMechanism = pxMechanism->mechanism;
+	}
+
+	return xResult;
+}
+
+/**
+ * @brief Verifies a digital signature.
+ *
+ * \note C_VerifyInit() must have been called previously.
+ *
+ * \note C_Verify() parameters are shared by a session.  Calling
+ * C_VerifyInit() & C_Verify() with the same session across different
+ * tasks may lead to unexpected results.
+ *
+ *
+ * @param[in] xSession                      Handle of a valid PKCS #11 session.
+ * @param[in] pucData                       Data who's signature is to be verified.
+ *                                          Note: In this implementation, this is generally
+ *                                          expected to be the hash of the data.
+ * @param[in] ulDataLen                     Length of pucData.
+ * @param[in] pucSignature                  The signature to be verified.
+ * @param[in] ulSignatureLength             Length of pucSignature in bytes.
+ *
+ * @return CKR_OK if successful.
+ * Else, see <a href="https://tiny.amazon.com/wtscrttv">PKCS #11 specification</a>
+ * for more information.
+ */
+CK_DEFINE_FUNCTION( CK_RV, C_Verify )( CK_SESSION_HANDLE xSession,
+									   CK_BYTE_PTR pucData,
+									   CK_ULONG ulDataLen,
+									   CK_BYTE_PTR pucSignature,
+									   CK_ULONG ulSignatureLen )
+{
+	CK_RV xResult = PKCS11_SESSION_VALID_AND_MODULE_INITIALIZED( xSession );
+	P11SessionPtr_t pxSessionObj;
+	int lMbedTLSResult;
+	psa_status_t uxStatus;
+
+	pxSessionObj = prvSessionPointerFromHandle( xSession ); /*lint !e9072 It's OK to have different parameter name. */
+
+	if( xResult == CKR_OK )
+	{
+		/* Check parameters. */
+		if( ( NULL == pucData ) ||
+			( NULL == pucSignature ) )
+		{
+			xResult = CKR_ARGUMENTS_BAD;
+		}
+	}
+
+	/* Check that the signature and data are the expected length.
+	 * These PKCS #11 mechanism expect data to be pre-hashed/formatted. */
+	if( xResult == CKR_OK )
+	{
+		if( pxSessionObj->xVerifyMechanism == CKM_RSA_X_509 )
+		{
+			if( ulDataLen != pkcs11RSA_2048_SIGNATURE_LENGTH )
+			{
+				xResult = CKR_DATA_LEN_RANGE;
+			}
+
+			if( ulSignatureLen != pkcs11RSA_2048_SIGNATURE_LENGTH )
+			{
+				xResult = CKR_SIGNATURE_LEN_RANGE;
+			}
+		}
+		else if( pxSessionObj->xVerifyMechanism == CKM_ECDSA )
+		{
+			if( ulDataLen != pkcs11SHA256_DIGEST_LENGTH )
+			{
+				xResult = CKR_DATA_LEN_RANGE;
+			}
+
+			if( ulSignatureLen != pkcs11ECDSA_P256_SIGNATURE_LENGTH )
+			{
+				xResult = CKR_SIGNATURE_LEN_RANGE;
+			}
+		}
+		else
+		{
+			xResult = CKR_OPERATION_NOT_INITIALIZED;
+		}
+	}
+
+	if( xResult == CKR_OK )
+	{
+		if( pdTRUE == xSemaphoreTake( pxSessionObj->xVerifyMutex, portMAX_DELAY ) )
+		{
+			/* Verify the signature. If a public key is present, use it. */
+			if ( pxSessionObj->uxVerifyKey == NULL )
+			{
+				xResult = CKR_KEY_HANDLE_INVALID;
+			}
+			else
+			{
+				uxStatus = psa_asymmetric_verify( pxSessionObj->uxVerifyKey,
+													pxSessionObj->xVerifyAlgorithm,
+													( const uint8_t * )pucData,
+													( size_t )ulDataLen,
+													( const uint8_t * )pucSignature,
+													( size_t )ulSignatureLen );
+
+				if( uxStatus == PSA_SUCCESS )
+				{
+					xResult = CKR_OK;
+				}
+
+				/*
+					* In PSA_ERROR_BUFFER_TOO_SMALL and PSA_ERROR_INVALID_SIGNATURE case,
+					* return invalid signature.
+					*/
+				else if( ( uxStatus == PSA_ERROR_INVALID_SIGNATURE ) ||
+						 ( uxStatus == PSA_ERROR_BUFFER_TOO_SMALL ) )
+				{
+					xResult = CKR_SIGNATURE_INVALID;
+				}
+				else
+				{
+					xResult = CKR_FUNCTION_FAILED;
+				}
+			}
+			xSemaphoreGive( pxSessionObj->xVerifyMutex );
+		}
+		else
+		{
+			xResult = CKR_CANT_LOCK;
+		}
+	}
+
+	/* Return the signature verification result. */
+	return xResult;
+}
