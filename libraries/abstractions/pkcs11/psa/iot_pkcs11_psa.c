@@ -2335,3 +2335,160 @@ CK_DECLARE_FUNCTION( CK_RV, C_FindObjectsFinal )( CK_SESSION_HANDLE xSession )
 
 	return xResult;
 }
+
+CK_DEFINE_FUNCTION( CK_RV, C_DigestInit )( CK_SESSION_HANDLE xSession,
+										   CK_MECHANISM_PTR pMechanism )
+{
+	CK_RV xResult = PKCS11_SESSION_VALID_AND_MODULE_INITIALIZED( xSession );
+	psa_hash_operation_t* pxHandle = NULL;
+	P11SessionPtr_t pxSession = prvSessionPointerFromHandle( xSession );
+	psa_status_t uxStatus;
+
+	if( xResult == CKR_OK )
+	{
+		if( pMechanism == NULL )
+		{
+			xResult = CKR_ARGUMENTS_BAD;
+		}
+	}
+
+	if(( xResult == CKR_OK ) && ( pMechanism->mechanism != CKM_SHA256 ))
+	{
+		xResult = CKR_MECHANISM_INVALID;
+	}
+
+	if( xResult == CKR_OK )
+	{
+		pxHandle = ( psa_hash_operation_t * )pvPortMalloc( sizeof( psa_hash_operation_t ) );
+		if( pxHandle == NULL )
+		{
+			xResult = CKR_HOST_MEMORY;
+		}
+	}
+
+	/*
+	 * Initialize the requested hash type
+	 */
+	if ( xResult == CKR_OK )
+	{
+		*pxHandle = psa_hash_operation_init();
+
+		/*
+		 * Setup the hash object for the desired hash.
+		 * Currently only the SHA_256 algorithm is supported.
+		 */
+		uxStatus = psa_hash_setup( pxHandle, PSA_ALG_SHA_256 );
+		if ( uxStatus != PSA_SUCCESS )
+		{
+			xResult = CKR_FUNCTION_FAILED;
+		}
+		else
+		{
+			pxSession->xOperationInProgress = pMechanism->mechanism;
+			pxSession->pxHashOperationHandle = pxHandle;
+		}
+	}
+
+	return xResult;
+}
+
+CK_DEFINE_FUNCTION( CK_RV, C_DigestUpdate )( CK_SESSION_HANDLE xSession,
+											 CK_BYTE_PTR pPart,
+											 CK_ULONG ulPartLen )
+{
+	CK_RV xResult = PKCS11_SESSION_VALID_AND_MODULE_INITIALIZED( xSession );
+	P11SessionPtr_t pxSession = prvSessionPointerFromHandle( xSession );
+	psa_status_t uxStatus;
+
+	if( xResult == CKR_OK )
+	{
+		if( pPart == NULL )
+		{
+			PKCS11_PRINT( ( "ERROR: Null digest mechanism provided. \r\n" ) );
+			xResult = CKR_ARGUMENTS_BAD;
+		}
+	}
+
+	if( xResult == CKR_OK )
+	{
+		if( ( pxSession->xOperationInProgress != CKM_SHA256 ) ||
+			( pxSession->pxHashOperationHandle == NULL ) )
+		{
+			xResult = CKR_OPERATION_NOT_INITIALIZED;
+		}
+	}
+
+	if( xResult == CKR_OK )
+	{
+		uxStatus = psa_hash_update( pxSession->pxHashOperationHandle, pPart, ulPartLen );
+		if( uxStatus != PSA_SUCCESS )
+		{
+			uxStatus = psa_hash_abort( pxSession->pxHashOperationHandle );
+			if( uxStatus != PSA_SUCCESS )
+			{
+				PKCS11_PRINT( ( "ERROR: psa_hash_abort error. \r\n" ) );
+			}
+			vPortFree( pxSession->pxHashOperationHandle );
+			pxSession->pxHashOperationHandle = NULL;
+			pxSession->xOperationInProgress = pkcs11NO_OPERATION;
+			xResult = CKR_FUNCTION_FAILED;
+		}
+	}
+
+	return xResult;
+}
+
+CK_DEFINE_FUNCTION( CK_RV, C_DigestFinal )( CK_SESSION_HANDLE xSession,
+											CK_BYTE_PTR pDigest,
+											CK_ULONG_PTR pulDigestLen )
+{
+	psa_ps_status_t uxStatus;
+	CK_RV xResult = PKCS11_SESSION_VALID_AND_MODULE_INITIALIZED( xSession );
+	P11SessionPtr_t pxSession = prvSessionPointerFromHandle( xSession );
+
+	if( xResult == CKR_OK )
+	{
+		if( pulDigestLen == NULL )
+		{
+			xResult = CKR_ARGUMENTS_BAD;
+		}
+	}
+
+    if( xResult == CKR_OK )
+    {
+        if( pxSession->xOperationInProgress != CKM_SHA256 )
+        {
+            xResult = CKR_OPERATION_NOT_INITIALIZED;
+            pxSession->xOperationInProgress = pkcs11NO_OPERATION;
+        }
+    }
+
+	if( xResult == CKR_OK )
+	{
+		if( pDigest == NULL )
+		{
+			/* Supply the required buffer size. */
+			*pulDigestLen = pkcs11SHA256_DIGEST_LENGTH;
+		}
+		else
+		{
+			if( *pulDigestLen < pkcs11SHA256_DIGEST_LENGTH )
+			{
+				xResult = CKR_BUFFER_TOO_SMALL;
+			}
+			else
+			{
+				uxStatus = psa_hash_finish( pxSession->pxHashOperationHandle, pDigest, *pulDigestLen, ( size_t * )pulDigestLen );
+				if( uxStatus != PSA_SUCCESS )
+				{
+					xResult = CKR_FUNCTION_FAILED;
+				}
+				pxSession->xOperationInProgress = pkcs11NO_OPERATION;
+				vPortFree( pxSession->pxHashOperationHandle );
+				pxSession->pxHashOperationHandle = NULL;
+			}
+		}
+	}
+
+	return xResult;
+}
