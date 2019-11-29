@@ -154,6 +154,8 @@ only for ports that are using the MPU. */
 		#define xStreamBufferSetTriggerLevel			MPU_xStreamBufferSetTriggerLevel
 		#define xStreamBufferGenericCreate				MPU_xStreamBufferGenericCreate
 		#define xStreamBufferGenericCreateStatic		MPU_xStreamBufferGenericCreateStatic
+		#define pvPortMalloc							MPU_pvPortMalloc
+		#define vPortFree								MPU_vPortFree
 
 
 		/* Remove the privileged function macro, but keep the PRIVILEGED_DATA

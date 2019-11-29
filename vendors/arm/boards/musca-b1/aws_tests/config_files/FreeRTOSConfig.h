@@ -27,6 +27,8 @@
 #ifndef FREERTOS_CONFIG_H
 #define FREERTOS_CONFIG_H
 
+#include <stdio.h>
+
 /* Unity includes for testing. */
 #include "unity_internals.h"
 
@@ -152,16 +154,18 @@ void vAssertCalled( const char * pcFile,
 
 /* The function that implements FreeRTOS printf style output, and the macro
  * that maps the configPRINTF() macros to that function. */
-extern void print_log( const char *format, ... );
-#define configPRINTF( X )    print_log X
+extern void vLoggingPrintf( const char * pcFormat,
+                     ... );
+#define configPRINTF( X )    vLoggingPrintf X
 
 /* Non-format version thread-safe print */
 extern void vLoggingPrint( const char * pcMessage );
 #define configPRINT( X )     vLoggingPrint( X )
 
 /* Map the logging task's printf to the board specific output function. */
-#include <stdio.h>
-#define configPRINT_STRING( X )    printf( X ); /* FIX ME: Change to your devices console print acceptance function. */
+extern void print_log( const char *format, ... );
+#define configPRINT_STRING( X )    print_log( X )
+
 /* Sets the length of the buffers into which logging messages are written - so
  * also defines the maximum length of each log message. */
 #define configLOGGING_MAX_MESSAGE_LENGTH            100

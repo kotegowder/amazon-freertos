@@ -30,7 +30,7 @@
 /* FreeRTOS includes. */
 #include "FreeRTOS.h"
 #include "task.h"
-#include "print_log.h"
+#include "iot_logging_task.h"
 
 /* Test framework include */
 #include "aws_test_framework.h"
@@ -94,7 +94,7 @@ void TEST_NotifyTestFinished()
 void TEST_SubmitResult( const char * pcResult )
 {
     /* We want to print test result no matter configPRINTF is defined or not */
-    print_log( pcResult );
+    vLoggingPrint( pcResult );
 
     /* Wait for 0.1 seconds to let print task empty its buffer. */
     vTaskDelay( pdMS_TO_TICKS( 100UL ) );

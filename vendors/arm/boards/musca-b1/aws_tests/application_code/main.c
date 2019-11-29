@@ -39,6 +39,7 @@
 
 /* Log print include */
 #include "print_log.h"
+#include "iot_logging_task.h"
 
 /* Hardware setup include */
 #include "hardware_setup.h"
@@ -48,6 +49,9 @@
 
 #define MUSCA_B_NS_PERIPHERAL_REGION_START_ADDRESS		( 0x40000000 )
 #define MUSCA_B_NS_PERIPHERAL_REGION_SIZE				( 0x10000000 )
+
+#define mainLOGGING_TASK_STACK_SIZE ( configMINIMAL_STACK_SIZE * 8 )
+#define mainLOGGING_MESSAGE_QUEUE_LENGTH ( 20 )
 
 extern uint32_t Image$$ER_IROM_NS_PRIVILEGED$$Base;
 extern uint32_t Image$$ER_IROM_NS_FREERTOS_SYSTEM_CALLS$$Base;
@@ -163,6 +167,9 @@ TaskParameters_t xPKCS11TestTaskParameters =
 };
 
 	xTaskCreateRestricted( &( xPKCS11TestTaskParameters ), NULL );
+    xLoggingTaskInitialize( mainLOGGING_TASK_STACK_SIZE,
+                            tskIDLE_PRIORITY | portPRIVILEGE_BIT,
+                            mainLOGGING_MESSAGE_QUEUE_LENGTH );
 }
 /*-----------------------------------------------------------*/
 

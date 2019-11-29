@@ -337,7 +337,7 @@
               <MiscControls></MiscControls>
               <Define>UNITY_INCLUDE_CONFIG_H</Define>
               <Undefine></Undefine>
-              <IncludePath>..\..\..\..\..\..\trusted-firmware-m\build\install\export\tfm\include;..\..\..\..\..\freertos_kernel\include;..\..\..\..\..\freertos_kernel\portable\GCC\ARM_CM33_TFM;..\..\..\..\..\vendors\arm\driver_library\drivers;..\..\..\..\..\vendors\arm\driver_library\Device\include;..\..\..\..\..\vendors\arm\driver_library\Device\config;..\..\..\..\..\vendors\arm\driver_library\cmsis\config;..\..\..\..\..\vendors\arm\driver_library\gen_support;..\..\..\..\..\vendors\arm\driver_library\cmsis\include;..\..\..\..\..\vendors\arm\boards\musca-b1\aws_tests\application_code\arm_code;..\..\..\..\..\vendors\arm\boards\musca-b1\aws_tests\config_files;..\..\..\..\..\freertos_kernel\include;..\..\..\..\..\libraries\abstractions\pkcs11\include;..\..\..\..\..\libraries\freertos_plus\standard\pkcs11\include;..\..\..\..\..\libraries\3rdparty\pkcs11;..\..\..\..\..\tests\include;..\..\..\..\..\libraries\3rdparty\unity\src;..\..\..\..\..\libraries\3rdparty\unity\extras\fixture\src;..\..\..\..\..\demos\dev_mode_key_provisioning\include;..\..\..\..\..\libraries\freertos_plus\standard\crypto\include;..\..\..\..\..\libraries\3rdparty\mbedtls\include;..\..\..\..\..\libraries\c_sdk\standard\common\include;..\..\..\..\..\libraries\freertos_plus\standard\utils\include;..\..\..\..\..\libraries\c_sdk\standard\common\include\private;..\..\..\..\..\libraries\abstractions\pkcs11\mbedtls;..\..\..\..\..\vendors\arm\driver_library\cmsis\drivers;..\..\..\..\..\vendors\arm\boards\musca-b1\aws_tests\application_code\arm_code;..\..\..\..\..\libraries\freertos_plus\standard\utils\include</IncludePath>
+              <IncludePath>..\..\..\..\..\..\trusted-firmware-m\build\install\export\tfm\include;..\..\..\..\..\freertos_kernel\include;..\..\..\..\..\freertos_kernel\portable\GCC\ARM_CM33_TFM;..\..\..\..\..\vendors\arm\driver_library\drivers;..\..\..\..\..\vendors\arm\driver_library\Device\include;..\..\..\..\..\vendors\arm\driver_library\Device\config;..\..\..\..\..\vendors\arm\driver_library\cmsis\config;..\..\..\..\..\vendors\arm\driver_library\gen_support;..\..\..\..\..\vendors\arm\driver_library\cmsis\include;..\..\..\..\..\vendors\arm\boards\musca-b1\aws_tests\application_code\arm_code;..\..\..\..\..\vendors\arm\boards\musca-b1\aws_tests\config_files;..\..\..\..\..\freertos_kernel\include;..\..\..\..\..\libraries\abstractions\pkcs11\include;..\..\..\..\..\libraries\freertos_plus\standard\pkcs11\include;..\..\..\..\..\libraries\3rdparty\pkcs11;..\..\..\..\..\tests\include;..\..\..\..\..\libraries\3rdparty\unity\src;..\..\..\..\..\libraries\3rdparty\unity\extras\fixture\src;..\..\..\..\..\demos\dev_mode_key_provisioning\include;..\..\..\..\..\libraries\freertos_plus\standard\crypto\include;..\..\..\..\..\libraries\3rdparty\mbedtls\include;..\..\..\..\..\libraries\c_sdk\standard\common\include;..\..\..\..\..\libraries\freertos_plus\standard\utils\include;..\..\..\..\..\libraries\c_sdk\standard\common\include\private;..\..\..\..\..\libraries\abstractions\pkcs11\mbedtls;..\..\..\..\..\vendors\arm\driver_library\cmsis\drivers;..\..\..\..\..\vendors\arm\boards\musca-b1\aws_tests\application_code\arm_code;..\..\..\..\..\libraries\freertos_plus\standard\utils\include;..\..\..\..\..\libraries\c_sdk\standard\common\include</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -1452,6 +1452,21 @@
                   </Cads>
                 </FileArmAds>
               </FileOption>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>libraries/c_sdk/standard/common/logging</GroupName>
+          <Files>
+            <File>
+              <FileName>iot_logging_task_dynamic_buffers.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\libraries\c_sdk\standard\common\logging\iot_logging_task_dynamic_buffers.c</FilePath>
+            </File>
+            <File>
+              <FileName>iot_logging_task.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\..\..\..\..\libraries\c_sdk\standard\common\include\iot_logging_task.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -2954,6 +2969,21 @@
               <FileName>tfm_sst_func_api.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\..\..\..\..\..\trusted-firmware-m\build\install\export\tfm\src\tfm_sst_func_api.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>libraries/c_sdk/standard/common/logging</GroupName>
+          <Files>
+            <File>
+              <FileName>iot_logging_task_dynamic_buffers.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\..\..\..\..\libraries\c_sdk\standard\common\logging\iot_logging_task_dynamic_buffers.c</FilePath>
+            </File>
+            <File>
+              <FileName>iot_logging_task.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\..\..\..\..\libraries\c_sdk\standard\common\include\iot_logging_task.h</FilePath>
             </File>
           </Files>
         </Group>

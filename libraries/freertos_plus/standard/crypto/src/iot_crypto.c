@@ -48,9 +48,7 @@
 /* C runtime includes. */
 #include <string.h>
 
-#include "print_log.h"
-
-#define CRYPTO_PRINT( X )    INFO_LOG X
+#define CRYPTO_PRINT( X )    vLoggingPrintf X
 
 /**
  * @brief Internal signature verification context structure

@@ -73,6 +73,7 @@ LR_CODE NS_CODE_START ; load region
 		 heap_4.o(+RW, +ZI)
 		 ecp.o(+RW, +ZI)
 		 ecp_curves.o(+RW, +ZI)
+		 iot_logging_task_dynamic_buffers.o(+ZI)
     }
 
 

@@ -304,10 +304,4 @@ void vApplicationMQTTGetKeys( const char ** ppcRootCA,
                               const char ** ppcClientCert,
                               const char ** ppcClientPrivateKey );
 
-extern void *MPU_pvPortMalloc( size_t xSize );
-extern void MPU_vPortFree( void *pv );
-
-#define pvPortMalloc  MPU_pvPortMalloc
-#define vPortFree     MPU_vPortFree
-
 #endif /* FREERTOS_IP_CONFIG_H */
