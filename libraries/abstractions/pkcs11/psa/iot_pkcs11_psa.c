@@ -1014,7 +1014,7 @@ CK_RV prvCreatePublicKey( CK_ATTRIBUTE_PTR pxTemplate,
 						  CK_ULONG ulCount,
 						  CK_OBJECT_HANDLE_PTR pxObject )
 {
-#define MAX_PUBLIC_KEY_SIZE	3000
+#define MAX_PUBLIC_KEY_SIZE	3000	/* To cover 2048-bit RSA and ECDSA P256 type public key. */
 	mbedtls_pk_context xMbedContext;
 	int lDerKeyLength;
 	CK_BYTE_PTR pxDerKey = NULL;
@@ -1957,11 +1957,11 @@ CK_DEFINE_FUNCTION( CK_RV, C_GetAttributeValue )( CK_SESSION_HANDLE xSession,
 							psa_key_handle_t ulKeyHandle = 0;
 							if( xPalHandle == eAwsDevicePrivateKey )
 							{
-								ulKeyHandle = P11KeyConfig.uxDevicePublicKey;
+								ulKeyHandle = P11KeyConfig.uxDevicePrivateKey;
 							}
 							else if( xPalHandle == eAwsDevicePublicKey )
 							{
-								ulKeyHandle = P11KeyConfig.uxDevicePrivateKey;
+								ulKeyHandle = P11KeyConfig.uxDevicePublicKey;
 							}
 							else if( xPalHandle == eAwsCodeSigningKey )
 							{

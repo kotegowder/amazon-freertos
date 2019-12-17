@@ -31,15 +31,14 @@
 #include <string.h>
 
 /**
- * This function is not used in the PSA based PKCS#11 API implementation.
- * It is only used in the PKCS#11 test.
+ * This function is only used in the PKCS#11 test case. In the PKCS#11 test,
+ * it calls the mbedtls steps to generate the random number, so this function
+ * is needed. But in the PKCS#11 library, we call the C_GenerateRandom to
+ * generate a random number and do not need to call this function.
  */
 int mbedtls_hardware_poll( void *data,
 						   unsigned char *output, size_t len, size_t *olen )
 {
-	/* FIX ME
-	 * This need to generate a random number by hardware.
-	 */
 	( void ) (data);
 	( void ) (len);
 
